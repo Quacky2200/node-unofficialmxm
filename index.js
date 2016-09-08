@@ -42,21 +42,22 @@ function getLyrics(title, artists, callback){
 			var result = $('.tracks.list .track-card:not(.has-add-lyrics) a.title:first-child');
 			if (!result || result.length < 1) return callback(new Error('No result could be found'));
 			headers.url = HOST + $(result[0]).attr('href');
-
-			request(headers, (err, resp, html) => {
-				var lyrics = '';
-				$ = cheerio.load(html);
-				$('.mxm-lyrics__content').each(function(){
-					lyrics += $(this).text() + '\n';
+			setTimeout(() => {
+				request(headers, (err, resp, html) => {
+					var lyrics = '';
+					$ = cheerio.load(html);
+					$('.mxm-lyrics__content').each(function(){
+						lyrics += $(this).text() + '\n';
+					});
+					callback(null, {
+						title: $('.mxm-track-title__track').text(),
+						artist: $('.mxm-track-title__artist').text(),
+						lyrics: lyrics
+					});
 				});
-				callback(null, {
-					title: $('.mxm-track-title__track').text(),
-					artist: $('.mxm-track-title__artist').text(),
-					lyrics: lyrics
-				});
-			});
+			}, getRandomInt(100, 500));
 		});
-	}, getRandomInt(600, 5e3));
+	}, getRandomInt(100, 500));
 	//Look like a human by delaying the final choice - 5 seconds is not good but needs to be done :/
 	//Look like a human by using cookies inbetween pages
 	//Look like a human by using a user agent similar to normal user
