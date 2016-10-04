@@ -49,9 +49,13 @@ function getLyrics(title, artists, callback){
 					$('.mxm-lyrics__content').each(function(){
 						lyrics += $(this).text() + '\n';
 					});
+					//Get a gramatically correct artist list and title from the meta description (normally provided for SEO)
+					//Description example: Lyrics for I Love to Laugh by Edwynn, Julie Andrews & Dick Van Dyke. I love to laugh...
+					//Match: Lyrics for {song title} by {song artist(s) (seperated by comma's and finally an ampersand)}.
+					var songInfo = $('meta[name=\'description\']').attr('content').match(/(?:Lyrics for )([\w \.\'\-\(\)]+) by ([\w \,\&\'\-\(\)]+)\./)
 					callback(null, {
-						title: $('.mxm-track-title__track').text(),
-						artist: $('.mxm-track-title__artist').text(),
+						title: songInfo[1],
+						artist: songInfo[2],
 						lyrics: lyrics
 					});
 				});
