@@ -52,6 +52,7 @@ function getLyrics(title, artists, callback){
 					//Get a gramatically correct artist list and title from the meta description (normally provided for SEO)
 					//Description example: Lyrics for I Love to Laugh by Edwynn, Julie Andrews & Dick Van Dyke. I love to laugh...
 					//Match: Lyrics for {song title} by {song artist(s) (seperated by comma's and finally an ampersand)}.
+					if($('.mxm-lyrics-not-available')) return callback(new Error('Lyrics are not available for this song'));
 					var songInfo = $('meta[name=\'description\']').attr('content').match(/(?:Lyrics for )([\w \.\'\-\(\)]+) by ([\w \,\&\'\-\(\)]+)\./)
 					callback(null, {
 						title: songInfo[1],
