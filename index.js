@@ -37,8 +37,9 @@ function getLyrics(title, artists, callback){
 	 * Grinch Introduction/ The Grinch/ “You’re a Mean One, Mr. Grinch” -> Grinch Introduction
 	 * Hey Ya! - Radio Mix / Club Mix -> Hey Ya
 	 * 5, 6, 7, 8 -> 5 6 7 8
+	 * (I've Got A) Golden Ticket -> I've Got A Golden Ticket
 	 */
-	var trackName = title.replace(/( \- |\(|\/)(.*)/, '').match(/[\w\'\-\.\*]+/g).join(' ')
+	var trackName = title.replace(/( \- | \(|\/)(.*)/, '').match(/[\w\'\-\.\*]+/g).join(' ')
 	var artistName = artists.split(', ')[0].match(/(?:(?![^\w ]).)*/)[0];
 	
 	format = '/search/' + format.replace('%t', trackName).replace('%a', artistName);
