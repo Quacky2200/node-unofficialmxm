@@ -17,8 +17,7 @@ var user_agents = [
 var search_format = [
 	"%t - %a",
 	"%t %a",
-	"%a %t",
-    "%a \"%t\""
+	"%a %t"
 ];
 const HOST = 'https://www.musixmatch.com';
 /*
@@ -29,8 +28,19 @@ const HOST = 'https://www.musixmatch.com';
  */
 function getLyrics(title, artists, callback){
 	var format = search_format[getRandomInt(0, search_format.length)];
-	var trackName = title.replace(/(\'| - .*| \(.*)/i, '');
-	var artistName = artists.split(', ')[0];
+	/* Remove anything typically at the end, for example '- 1984 version', '(feat. Kelly)'
+	 * Then only get anything that's a word or apostrophe in the string
+	 * Finally join the word array into a sentence
+	 * Examples: 
+	 * Fairytale of New York (feat. Kirsty MacColl) -> Fairytale of New York
+	 * Hark! The Herald Angels Sing/Gloria (In Excelsis Deo) -> Hark The Herald Angels Sing
+	 * Grinch Introduction/ The Grinch/ “You’re a Mean One, Mr. Grinch” -> Grinch Introduction
+	 * Hey Ya! - Radio Mix / Club Mix -> Hey Ya
+	 * 5, 6, 7, 8 -> 5 6 7 8
+	 */
+	var trackName = title.replace(/( \- |\(|\/)(.*)/, '').match(/[\w\'\-\.\*]+/g).join(' ')
+	var artistName = artists.split(', ')[0].match(/(?:(?![^\w ]).)*/)[0];
+	
 	format = '/search/' + format.replace('%t', trackName).replace('%a', artistName);
 	var url = HOST + format + '#';
 	var j = request.jar();
@@ -39,26 +49,38 @@ function getLyrics(title, artists, callback){
 		request(headers, (err, resp, html) => {
 			if (err || resp.statusCode !== 200) return callback((err ? err : new Error(resp.statusCode, resp)));
 			var $ = cheerio.load(html);
-			var result = $('.tracks.list .track-card:not(.has-add-lyrics) a.title:first-child');
-			if (!result || result.length < 1) return callback(new Error('No result could be found'));
-			headers.url = HOST + $(result[0]).attr('href');
+			//Grab the search results directly instead of 'scraping' the main viewable website DOM
+			var searchResults = JSON.parse($('script').text().match(/var __mxmProps = (\{.*\})window/)[1]);
+			//Put all the track results into an array that we can filter
+			searchResults = Array.from(searchResults.allResults.tracks);
+			//Only grab relevent search results by our title name
+			searchResults = searchResults.filter((a) => {
+				return (a.title && (a.title.toLowerCase().replace(/(\’|\`)/g, '\'') == trackName.toLowerCase().replace(/(\’|\`)/g, '\'') || 
+				a.title.toLowerCase().replace(/(\’|\`)/g, '\'') == title.toLowerCase().replace(/(\’|\`)/g, '\'')))
+			});
+
+			if(!searchResults || searchResults.length < 1) return callback(new Error('No result could be found'));
+			
+			headers.url = searchResults[0].shareURI; 
 			setTimeout(() => {
 				request(headers, (err, resp, html) => {
-					var lyrics = '';
 					$ = cheerio.load(html);
-					$('.mxm-lyrics__content').each(function(){
-						lyrics += $(this).text() + '\n';
-					});
-					//Get a gramatically correct artist list and title from the meta description (normally provided for SEO)
-					//Description example: Lyrics for I Love to Laugh by Edwynn, Julie Andrews & Dick Van Dyke. I love to laugh...
-					//Match: Lyrics for {song title} by {song artist(s) (seperated by comma's and finally an ampersand)}.
-					if($('.mxm-lyrics-not-available')) return callback(new Error('Lyrics are not available for this song'));
-					var songInfo = $('meta[name=\'description\']').attr('content').match(/(?:Lyrics for )([\w \.\'\-\(\)]+) by ([\w \,\&\'\-\(\)]+)\./)
-					callback(null, {
-						title: songInfo[1],
-						artist: songInfo[2],
-						lyrics: lyrics
-					});
+
+					var mxmResult = JSON.parse($('script').text().match(/var __mxmState = (\{.*\})}\;/)[1] + '}');
+
+					if (!!mxmResult.page.track.restricted || !!mxmResult.page.lyrics.lyrics.restricted) {
+						return callback(new Error('Lyrics are restricted'))
+					} else if (!mxmResult.page.track.hasLyrics && !mxmResult.page.lyrics.lyrics.body){
+						return callback(new Error('No lyrics have been assigned to this song'))
+					} else {
+						return callback(null, {
+							name: mxmResult.page.track.name, 
+							artists: mxmResult.page.track.artistName, 
+							lyrics: mxmResult.page.lyrics.lyrics.body,
+							url: mxmResult.page.track.shareUrl,
+							updatedTime: mxmResult.page.track.updatedTime
+						});
+					}
 				});
 			}, getRandomInt(100, 500));
 		});

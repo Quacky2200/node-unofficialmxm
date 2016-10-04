@@ -1,6 +1,6 @@
 {
   "name": "node-unofficialmxm",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "An unofficial MusixMatch scraper to get lyrics with only the title and artist metadata",
   "main": "index.js",
   "dependencies": {
