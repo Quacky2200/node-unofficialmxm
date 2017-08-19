@@ -1,5 +1,6 @@
+const HOST = 'https://www.musixmatch.com';
 var request = require('request');
-var cheerio = require('cheerio');
+
 var user_agents = [
 	"Mozilla/5.0 (X11; Ubuntu; Linux i686; rv:48.0) Gecko/20100101 Firefox/48.0", //Ubuntu Firefox
 	"Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Safari/537.36", //Windows 10 Chrome Generic
@@ -14,12 +15,14 @@ var user_agents = [
 	"Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Trident/5.0; Trident/5.0)", //IE 9 Windows 7
 	"Opera/9.80 (Windows NT 6.1; WOW64) Presto/2.12.388 Version/12.16" //Opera Windows 7
 ];
+
 var search_format = [
 	"%t - %a",
 	"%t %a",
 	"%a %t"
 ];
-const HOST = 'https://www.musixmatch.com';
+
+
 /*
  * Get's lyrics to a song from MusixMatch using the title and artist name
  * param {String} title
@@ -27,6 +30,11 @@ const HOST = 'https://www.musixmatch.com';
  * param {Function} callback(err, lyrics)
  */
 function getLyrics(title, artists, callback){
+
+	if (!title && !artists) {
+		return callback(new Error('Unable to search without title and artist!'), null);
+	}
+
 	var format = search_format[getRandomInt(0, search_format.length)];
 	/* Remove anything typically at the end, for example '- 1984 version', '(feat. Kelly)'
 	 * Then only get anything that's a word or apostrophe in the string
@@ -39,35 +47,64 @@ function getLyrics(title, artists, callback){
 	 * 5, 6, 7, 8 -> 5 6 7 8
 	 * (I've Got A) Golden Ticket -> I've Got A Golden Ticket
 	 */
-	var trackName = title.replace(/( \- | \(|\/)(.*)/, '').match(/[\w\'\-\.\*]+/g).join(' ')
+	var trackName = (title ? title.replace(/( \- | \(|\/)(.*)/, '').match(/[\w\'\-\.\*]+/g).join(' ') : '');
 	var artistName = artists.split(', ')[0].match(/(?:(?![^\w ]).)*/)[0];
 	
-	format = '/search/' + format.replace('%t', trackName).replace('%a', artistName);
+	format = '/search/' + encodeURIComponent(format.replace('%t', trackName).replace('%a', artistName));
+
 	var url = HOST + format + '#';
 	var j = request.jar();
 	var headers = {url: url, jar: j, headers: {'User-Agent': user_agents[getRandomInt(0, user_agents.length)]}};
+
 	setTimeout(() => {
 		request(headers, (err, resp, html) => {
 			if (err || resp.statusCode !== 200) return callback((err ? err : new Error(resp.statusCode, resp)));
-			var $ = cheerio.load(html);
-			//Grab the search results directly instead of 'scraping' the main viewable website DOM
-			var searchResults = JSON.parse($('script').text().match(/var __mxmProps = (\{.*\})window/)[1]);
-			//Put all the track results into an array that we can filter
-			searchResults = Array.from(searchResults.allResults.tracks);
-			//Only grab relevent search results by our title name
-			searchResults = searchResults.filter((a) => {
-				return (a.title && (a.title.toLowerCase().replace(/(\’|\`)/g, '\'') == trackName.toLowerCase().replace(/(\’|\`)/g, '\'') || 
-				a.title.toLowerCase().replace(/(\’|\`)/g, '\'') == title.toLowerCase().replace(/(\’|\`)/g, '\'')))
+
+			// Search for JS results that uses promises instead of just JSON.
+			var results = html.match(/<script>var __mxmProps = {[^\b]+(?:"allResults":({[^\b]+})}<\/script>)/)[1];
+
+			if (!results) {
+				return callback(new Error('Search results could not be parsed due to a change in the regex format'));
+			}
+
+			// I hate eval just as much as you do
+			var searchResults;
+			try {
+				searchResults = eval(`(function() {return ${results}}())`);
+			} catch (e) {
+				return callback(new Error('The search results parsed contain a format error: ' + e + '\n' + html + '\n'));
+			}
+			if (!searchResults) {
+				return callback(new Error('The search results parsed were empty'));
+			}
+			searchResults = searchResults.tracks.attributes;
+
+			// Only grab relevent search results by our title name
+			results = searchResults.filter((current) => {
+				var ctitle = (current.track.track_name || '').toLowerCase().replace(/(\’|\`)/g, '\'');
+				var cartist = (current.track.artist_name || '').toLowerCase();
+				var stitle = title.toLowerCase().replace(/(\’|\`)/g, '\'');
+				var strackname = trackName.toLowerCase().replace(/(\’|\`)/g, '\'');
+				var sartist = artistName.toLowerCase().replace(/(\’|\`)/g, '\'');
+
+				/*
+				 * Allow for short searches, for example...
+				 * 'Pyro' and 'Casc' -> Pyromania by CASCADA
+				 * 'Edge of Glory' and 'Gaga' -> The Edge Of Glory by Lady Gaga
+				 * 
+				 */
+				var isRelevantTrack = ctitle.indexOf(stitle) > -1 || ctitle.indexOf(strackname) > -1;
+				return (isRelevantTrack && cartist.indexOf(sartist) > -1) || isRelevantTrack;
 			});
 
-			if(!searchResults || searchResults.length < 1) return callback(new Error('No result could be found'));
-			
-			headers.url = searchResults[0].shareURI; 
+
+			if(!results || results.length < 1) return callback(new Error('No result could be found'));
+
+			headers.url = results[0].track.track_share_url; 
 			setTimeout(() => {
 				request(headers, (err, resp, html) => {
-					$ = cheerio.load(html);
 
-					var mxmResult = JSON.parse($('script').text().match(/var __mxmState = (\{.*\})}\;/)[1] + '}');
+					var mxmResult = JSON.parse(html.match(/var __mxmState = ({.*});/m)[1]);
 
 					if (!!mxmResult.page.track.restricted || !!mxmResult.page.lyrics.lyrics.restricted) {
 						return callback(new Error('Lyrics are restricted'))
@@ -86,10 +123,10 @@ function getLyrics(title, artists, callback){
 			}, getRandomInt(100, 500));
 		});
 	}, getRandomInt(100, 500));
-	//Look like a human by delaying the final choice - 5 seconds is not good but needs to be done :/
-	//Look like a human by using cookies inbetween pages
-	//Look like a human by using a user agent similar to normal user
-	//Look human by inputing different strings?
+	// Look like a human by delaying the final choice - 5 seconds is not good but needs to be done :/
+	// Look like a human by using cookies inbetween pages
+	// Look like a human by using a user agent similar to normal user
+	// Look human by inputing different strings?
 }
 function getRandomInt(min, max) {
   min = Math.ceil(min);
