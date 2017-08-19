@@ -4,7 +4,6 @@
   "description": "An unofficial MusixMatch scraper to get lyrics with only the title and artist metadata",
   "main": "index.js",
   "dependencies": {
-    "cheerio": "^0.22.0",
     "request": "^2.74.0"
   },
   "devDependencies": {},
